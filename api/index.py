@@ -77,4 +77,4 @@ def calculate_metrics(request: MetricsRequest):
             ),
         }
 
-    return results
+    return {"regions": results}
