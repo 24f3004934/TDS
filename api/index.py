@@ -9,14 +9,18 @@ from pydantic import BaseModel, Field
 
 app = FastAPI()
 
+# Enable CORS for all origins, methods, and headers.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST", "OPTIONS"],
+    allow_credentials=False,
+    allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
-DATA_FILE = Path(__file__).with_name("data.json")
+# Telemetry JSON file is stored in the same directory as index.py.
+DATA_FILE = Path(__file__).parent / "data.json"
 
 
 class MetricsRequest(BaseModel):
@@ -25,20 +29,19 @@ class MetricsRequest(BaseModel):
 
 
 def load_telemetry():
-    with DATA_FILE.open("r", encoding="utf-8") as file:
-        return json.load(file)
-
-
-@app.post("/")
-def calculate_metrics(request: MetricsRequest):
     try:
-        records = load_telemetry()
+        with DATA_FILE.open("r", encoding="utf-8") as file:
+            return json.load(file)
     except (OSError, json.JSONDecodeError):
         raise HTTPException(
             status_code=500,
             detail="Unable to load telemetry data",
         )
 
+
+@app.post("/")
+def calculate_metrics(request: MetricsRequest):
+    records = load_telemetry()
     results = {}
 
     for region in request.regions:
@@ -57,8 +60,12 @@ def calculate_metrics(request: MetricsRequest):
             }
             continue
 
-        latencies = [record["latency_ms"] for record in matching]
-        uptimes = [record["uptime_pct"] for record in matching]
+        latencies = [
+            record["latency_ms"] for record in matching
+        ]
+        uptimes = [
+            record["uptime_pct"] for record in matching
+        ]
 
         results[region] = {
             "avg_latency": float(np.mean(latencies)),
