@@ -1,5 +1,6 @@
 
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -19,7 +20,7 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Telemetry JSON file is stored in the same directory as index.py.
+# Existing telemetry API
 DATA_FILE = Path(__file__).parent / "data.json"
 
 
@@ -60,12 +61,8 @@ def calculate_metrics(request: MetricsRequest):
             }
             continue
 
-        latencies = [
-            record["latency_ms"] for record in matching
-        ]
-        uptimes = [
-            record["uptime_pct"] for record in matching
-        ]
+        latencies = [record["latency_ms"] for record in matching]
+        uptimes = [record["uptime_pct"] for record in matching]
 
         results[region] = {
             "avg_latency": float(np.mean(latencies)),
@@ -78,3 +75,98 @@ def calculate_metrics(request: MetricsRequest):
         }
 
     return {"regions": results}
+
+
+# New sentiment analysis API
+class SentimentRequest(BaseModel):
+    sentences: list[str]
+
+
+POSITIVE_WORDS = {
+    "love", "loved", "lovely", "great", "excellent", "amazing",
+    "awesome", "good", "happy", "wonderful", "fantastic", "best",
+    "beautiful", "perfect", "enjoy", "enjoyed", "like", "liked",
+    "excited", "delighted", "pleased", "brilliant", "outstanding",
+    "success", "successful", "win", "winning", "glad", "grateful",
+    "thankful", "helpful", "recommend", "impressive", "easy", "fun",
+    "positive", "kind", "friendly", "superb", "hopeful", "favorite",
+    "favourite", "nice", "sweet", "smile", "smiling", "celebrate"
+}
+
+NEGATIVE_WORDS = {
+    "hate", "hated", "terrible", "awful", "bad", "horrible",
+    "sad", "angry", "disappointed", "disappointing", "worst",
+    "poor", "boring", "annoying", "annoyed", "fail", "failed",
+    "failure", "wrong", "problem", "problems", "painful", "ugly",
+    "useless", "difficult", "unhappy", "upset", "fear", "afraid",
+    "scared", "frustrated", "frustrating", "broken", "dislike",
+    "disliked", "regret", "regretful", "sadly", "unfortunately",
+    "negative", "disgusting", "pathetic", "sick", "worse", "stress",
+    "stressed", "stressful", "cry", "crying", "fail", "failure",
+    "lonely", "miserable", "disaster", "annoy", "pain", "hurt"
+}
+
+NEGATIONS = {
+    "not", "never", "no", "isn't", "wasn't", "don't",
+    "doesn't", "didn't", "can't", "couldn't", "won't",
+    "wouldn't", "hardly", "neither", "nor"
+}
+
+INTENSIFIERS = {
+    "very", "really", "extremely", "incredibly", "so",
+    "absolutely", "truly", "highly", "super"
+}
+
+
+def analyze_sentiment(sentence: str) -> str:
+    text = sentence.lower()
+    words = re.findall(r"\b[\w']+\b", text)
+
+    positive_score = 0.0
+    negative_score = 0.0
+
+    for i, word in enumerate(words):
+        if word not in POSITIVE_WORDS and word not in NEGATIVE_WORDS:
+            continue
+
+        score = 1.5 if i > 0 and words[i - 1] in INTENSIFIERS else 1.0
+        preceding = words[max(0, i - 3):i]
+        negated = any(w in NEGATIONS for w in preceding)
+
+        if word in POSITIVE_WORDS:
+            if negated:
+                negative_score += score
+            else:
+                positive_score += score
+        else:
+            if negated:
+                positive_score += score
+            else:
+                negative_score += score
+
+    # Handle a few common expressions.
+    if "thank you" in text or "well done" in text:
+        positive_score += 1
+
+    if "looking forward" in text or "can't wait" in text:
+        positive_score += 1
+
+    if positive_score > negative_score:
+        return "happy"
+    if negative_score > positive_score:
+        return "sad"
+    return "neutral"
+
+
+@app.post("/sentiment")
+def sentiment_analysis(request: SentimentRequest):
+    return {
+        "results": [
+            {
+                "sentence": sentence,
+                "sentiment": analyze_sentiment(sentence),
+            }
+            for sentence in request.sentences
+        ]
+    }
+
