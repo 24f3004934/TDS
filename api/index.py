@@ -77,7 +77,7 @@ def calculate_metrics(request: MetricsRequest):
     return {"regions": results}
 
 
-# New sentiment analysis API
+# Sentiment analysis API
 class SentimentRequest(BaseModel):
     sentences: list[str]
 
@@ -90,7 +90,14 @@ POSITIVE_WORDS = {
     "success", "successful", "win", "winning", "glad", "grateful",
     "thankful", "helpful", "recommend", "impressive", "easy", "fun",
     "positive", "kind", "friendly", "superb", "hopeful", "favorite",
-    "favourite", "nice", "sweet", "smile", "smiling", "celebrate"
+    "favourite", "nice", "sweet", "smile", "smiling", "celebrate",
+    "incredible", "exceptional", "cheerful", "peaceful", "pleasure",
+    "appreciate", "appreciated", "thrilled", "thanks", "thank",
+    "satisfied", "satisfying", "convenient", "reliable", "delightful",
+    "enjoyable", "charming", "inspiring", "inspired", "inspiration",
+    "cool", "clever", "smart", "creative", "calm", "comfortable",
+    "relaxed", "relaxing", "peace", "winner", "rewarding", "wow",
+    "yay", "fast", "affordable", "smooth", "smoothly", "recommendable"
 }
 
 NEGATIVE_WORDS = {
@@ -102,19 +109,38 @@ NEGATIVE_WORDS = {
     "scared", "frustrated", "frustrating", "broken", "dislike",
     "disliked", "regret", "regretful", "sadly", "unfortunately",
     "negative", "disgusting", "pathetic", "sick", "worse", "stress",
-    "stressed", "stressful", "cry", "crying", "fail", "failure",
-    "lonely", "miserable", "disaster", "annoy", "pain", "hurt"
+    "stressed", "stressful", "cry", "crying", "lonely", "miserable",
+    "disaster", "annoy", "pain", "hurt", "horribly", "terribly",
+    "ridiculous", "waste", "wasted", "slow", "expensive", "dreadful",
+    "disgusted", "irritated", "irritating", "unpleasant", "unfortunate",
+    "disappointment", "crash", "crashed", "damaged", "damage",
+    "complaint", "complaints", "weak", "inferior", "mess", "messy",
+    "mad", "furious", "worried", "worry", "anxious", "anxiety",
+    "nervous", "scam", "fraud", "rejected", "lose", "lost", "loss",
+    "overwhelmed", "exhausted", "tired", "confusing", "confused",
+    "confusion", "rude", "cruel", "evil", "unacceptable",
+    "disastrous", "mediocre", "incompetent", "suffer", "suffering",
+    "uncomfortable", "unreliable", "inadequate", "inefficient",
+    "miss", "missing", "awfully", "annoyance", "inferiority",
+    "boring", "stressful", "regretful", "worthless", "disrespectful",
+    "disrespect", "hostile", "threatening", "threat", "dangerous",
+    "danger", "scary", "terrifying", "terrified", "desperate",
+    "hopeless", "hopelessness", "heartbroken", "devastated",
+    "devastating", "tragic", "tragedy", "sorrow", "grief",
+    "gloomy", "depressing", "depressed", "disturbing", "disturbed",
+    "offensive", "offended", "discomfort", "complain", "complained"
 }
 
 NEGATIONS = {
     "not", "never", "no", "isn't", "wasn't", "don't",
     "doesn't", "didn't", "can't", "couldn't", "won't",
-    "wouldn't", "hardly", "neither", "nor"
+    "wouldn't", "hardly", "neither", "nor", "cannot"
 }
 
 INTENSIFIERS = {
     "very", "really", "extremely", "incredibly", "so",
-    "absolutely", "truly", "highly", "super"
+    "absolutely", "truly", "highly", "super", "quite",
+    "remarkably", "deeply", "especially", "totally"
 }
 
 
@@ -125,11 +151,85 @@ def analyze_sentiment(sentence: str) -> str:
     positive_score = 0.0
     negative_score = 0.0
 
+    positive_phrases = (
+        "thank you",
+        "well done",
+        "looking forward",
+        "can't wait",
+        "highly recommend",
+        "works perfectly",
+        "love it",
+        "good job",
+        "made my day",
+        "worth it",
+        "pleased with",
+        "happy with",
+        "very helpful",
+        "great experience",
+        "well worth",
+        "enjoyed it",
+        "glad to hear",
+        "good news",
+        "feel great",
+        "feel good",
+        "very good",
+        "very nice",
+        "excellent service",
+        "keep up the good work",
+    )
+
+    negative_phrases = (
+        "not worth",
+        "waste of time",
+        "waste of money",
+        "worst ever",
+        "not good",
+        "not great",
+        "not happy",
+        "not satisfied",
+        "poor quality",
+        "doesn't work",
+        "does not work",
+        "never again",
+        "fed up",
+        "not recommend",
+        "feel terrible",
+        "very disappointed",
+        "not worth it",
+        "disappointed with",
+        "not impressed",
+        "not helpful",
+        "not working",
+        "bad experience",
+        "terrible experience",
+        "very bad",
+        "very poor",
+        "not pleased",
+        "waste of effort",
+        "feel awful",
+        "feel sad",
+        "really bad",
+        "not acceptable",
+    )
+
+    for phrase in positive_phrases:
+        if phrase in text:
+            positive_score += 2
+
+    for phrase in negative_phrases:
+        if phrase in text:
+            negative_score += 2
+
     for i, word in enumerate(words):
         if word not in POSITIVE_WORDS and word not in NEGATIVE_WORDS:
             continue
 
-        score = 1.5 if i > 0 and words[i - 1] in INTENSIFIERS else 1.0
+        score = (
+            1.5
+            if i > 0 and words[i - 1] in INTENSIFIERS
+            else 1.0
+        )
+
         preceding = words[max(0, i - 3):i]
         negated = any(w in NEGATIONS for w in preceding)
 
@@ -138,23 +238,18 @@ def analyze_sentiment(sentence: str) -> str:
                 negative_score += score
             else:
                 positive_score += score
-        else:
+        elif word in NEGATIVE_WORDS:
             if negated:
                 positive_score += score
             else:
                 negative_score += score
 
-    # Handle a few common expressions.
-    if "thank you" in text or "well done" in text:
-        positive_score += 1
-
-    if "looking forward" in text or "can't wait" in text:
-        positive_score += 1
-
     if positive_score > negative_score:
         return "happy"
+
     if negative_score > positive_score:
         return "sad"
+
     return "neutral"
 
 
@@ -169,4 +264,3 @@ def sentiment_analysis(request: SentimentRequest):
             for sentence in request.sentences
         ]
     }
-
